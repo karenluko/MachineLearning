@@ -1,0 +1,99 @@
+---
+title: "Machine Learning Course Project"
+author: "Karen"
+date: "9/23/2020"
+output: html_document
+---
+The dataset refers to data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+"The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases."
+
+# Loading needed packages
+
+```{r}
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(randomForest)
+```
+
+# Downloading and loading the data 
+
+```{r, echo=T}
+if (!file.exists("pml-training.csv")) {
+  URLtrain <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(URLtrain, destfile = "pml-training.csv", method = "curl")
+}
+if (!file.exists("pml-testing.csv")) {
+  URLtest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(URLtest, destfile = "pml-testing.csv", method = "curl")
+}
+
+training_raw <- read.csv("pml-training.csv", na.strings=c("#DIV/0!"), row.names=1)
+testing_raw <- read.csv("pml-testing.csv", na.strings=c("#DIV/0!"), row.names=1)
+```
+
+# Exploring and cleaning the data
+
+Fist, the str() function was used in order to obtain the classes of each column and the dimensions of the dataset.
+```{r}
+str(training_raw)
+```
+
+By the analysis of the results from above, it can be observed that many columns are wrongly set as factors when they present quantitative data. Therefore, the whole dataset was coerced to the numeric class.The user_name and classe (columns 1 and 159 in the training_raw dataset) variables were not coerced into numeric and the function was applied to all the other columns execept these two. By sapply() function, it was possible to notice that all the variables, apart from user_name and classe, were successfully coerced. Missing values were also removed. Any variable that presented 500 or more missing values were promptly removed and the ones bellow this cutoff value were considered for imputation of NAs by the column mean. However, by the sum of the results of is.na() function, no variable with remaning NAs were identified.
+
+```{r}
+# Coercing into numeric
+training_raw[-c(1,159)] <- lapply(training_raw[-c(1,159)], function(x) {
+    if(is.factor(x)|is.integer(x)|is.logical(x)) as.numeric(as.character(x)) else x
+})
+sapply(training_raw, class)
+
+# Dealing with NAs
+training<-training_raw[apply(is.na(training_raw),2, sum)<500]
+apply(is.na(training),2,sum)
+```
+
+# Variable reduction
+
+Considering that variables with low variance would not contribute to the final response of each classe, those variables were checked by nearZeroVar() function of caret package in order to be previously removed if still necessary.
+```{r}
+Low_variance_columns<- nearZeroVar(training, saveMetrics = TRUE)
+training <- training[,!Low_variance_columns$nzv]
+```
+
+# Performing the analysis of the data
+
+## Crossvalidation
+
+In order to perform the crossvalidation step rows were partioned into training and crossvalidation groups.
+```{r}
+set.seed(333)
+inTrain <- createDataPartition(training$classe, p = 0.70, list = FALSE)
+training <- training[inTrain,]
+crossvalidation <- training[-inTrain,]
+```
+ 
+## Model training and validation
+
+The modelling was performed by the Random Forest method. This method was chosen because it is good to handle large datasets with unknown interactions between variables. The model was obtained by the randomForest() function from the randomForest package.
+Then, the performance of the model was evaluated in the crossvalidation dataset by predict() and the results were assessed by confusionMatrix(). This was perfomed to allow us to spot overfitting.
+```{r}
+model_RF<- randomForest(classe ~., data = training, importance = TRUE, ntrees = 10)
+varImp(model_RF)
+prediction_RF <- predict(model_RF, crossvalidation)
+confusionMatrix(prediction_RF, crossvalidation$classe)
+```
+
+An accuracy of 100% was obtained for the model.
+
+# Test dataset prediction
+
+The prediction was performed in the test dataset.
+```{r}
+test <- predict(model_RF, testing_raw)
+print(test)
+```
+
+# Conclusion
+
+The Random Forest method successfully modelled the dataset with high accuraccy.
